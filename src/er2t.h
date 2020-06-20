@@ -23,6 +23,8 @@
 #include    "reservoir.h" // Модель резервуара
 #include    "airdistributor.h" // Базовый класс "воздухораспределитель"
 
+#include <iostream>
+
 class Er2T : public Vehicle
 {
  public:
@@ -117,6 +119,8 @@ class Er2T : public Vehicle
     void stepTrolleysBrakeMech(double t, double dt);
 
     void stepAirDistributors(double t, double dt);
+
+    void m_registration(double t, double dt);
 
     // пошаговое выполнение
     void m_stepOtherEquipment(double t, double dt);

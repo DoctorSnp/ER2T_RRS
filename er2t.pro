@@ -8,6 +8,36 @@ QT += network
 
 RRS_ROOT="/home/den/RussianRailSimulator/"
 
+HARD_FLAGS=" -Werror"
+EXTERNAL_SHARE_FLAGS="-Wall -W -Wtype-limits -Wextra -Wempty-body \
+                        -Wmaybe-uninitialized -Warray-bounds "
+EXTERNAL_C_FLAGS=" -std=c11"
+EXTERNAL_CXX_FLAGS=" -std=c++11  -Woverloaded-virtual -Wctor-dtor-privacy -Wenum-compare "
+QMAKE_LFLAGS += -z defs
+
+
+OBJECTS_DIR=temp/obj
+MOC_DIR=temp/moc
+
+lessThan(QT_MAJOR_VERSION, 5):error("This project reguire QT >= 5.0")
+#CONFIG += c++11 console
+#CONFIG -= app_bundle
+
+
+# You can also make your code fail to compile if it uses deprecated APIs.
+# In order to do so, uncomment the following line.
+# You can also select to disable deprecated APIs only up to a certain version of Qt.
+#DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
+
+!isEmpty(HARD_CONTROL) {
+    EXTERNAL_SHARE_FLAGS+=$${HARD_FLAGS}
+    message("Hard warnings control")
+}
+
+QMAKE_CXXFLAGS +=   $${EXTERNAL_SHARE_FLAGS} $${EXTERNAL_CXX_FLAGS}
+#QMAKE_CFLAGS +=  $${EXTERNAL_SHARE_FLAGS} $${EXTERNAL_C_FLAGS}
+
+
 message( "ROOT ->" $$RRS_ROOT)
 # Имя итогового файла библиотеки и путь, куда он должен быть помещен после
 # сборки
