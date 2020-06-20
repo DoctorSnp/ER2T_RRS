@@ -1,17 +1,22 @@
 #include <QDir>
-
 #include "er2t.h"
 #include "train-horn.h"
 #include "filesystem.h"
 #include "sl2m.h"
 #include <QThread>
+#include <QtDebug>
 
+/*положение реверса*/
+constexpr int REVERSE_BACKWARD = -1;
+constexpr int REVERSE_FORWARD = 1;
+constexpr int REVERSE_NEUTRAL = 0;
 
 static qint32 MAIN_RESERVOIR_VOLUME = 1200;
 
 static void printer (QString text)
 {
     printf("%s\n", text.toStdString().c_str());
+    //qDebug()<<text;
     fflush(stdout);
 }
 
@@ -32,7 +37,6 @@ void Er2T::initBrakeDevices(double p0, double pTM, double pFL)
 {
     main_reservoir->setY(0, pFL);
     charge_press = p0;
-
     load_brakes_config(config_dir + QDir::separator() + "brakes-init.xml");
 }
 
@@ -41,14 +45,11 @@ void Er2T::initialization()
 {
     FileSystem &fs = FileSystem::getInstance();
     QString modules_dir = QString(fs.getModulesDir().c_str());
-    printer("Initializing Er2T");
+    //printer("Initializing Er2T");
     initSupplyMachines();
-
-
 
     m_initBrakeControls(modules_dir);
     m_initBrakeMechanics();
-
     m_initBrakeEquipment(modules_dir);
 
     initOtherEquipment();
@@ -58,17 +59,6 @@ void Er2T::initialization()
 
 void Er2T::initOtherEquipment()
 {
-    //static int count = 1;
-    //DebugMsg = "tadm : " + QString::number(count);
-    //printer("11111");
-    //if (m_speedMeter == nullptr)
-   //     m_speedMeter = new SL2M();
-
-    //printer("22222");
-
-   //m_speedMeter->setWheelDiameter(wheel_diameter);
-   //m_speedMeter->read_custom_config(config_dir + QDir::separator() + "3SL-2M");
-    //connect(m_speedMeter, &SL2M::soundSetVolume, this, &SimpleLoco::soundSetVolume);
     if (horn == nullptr) {
         horn = new TrainHorn(this);
         connect(horn, &TrainHorn::soundSetVolume, this, &Er2T::soundSetVolume);
@@ -95,28 +85,6 @@ void Er2T::initSupplyMachines()
     m_press_reg = new PressureRegulator();
 }
 
-void Er2T::m_initBrakeEquipment(QString modules_dir)
-{
-    switch_valve = new SwitchingValve();
-    switch_valve->read_config("zpk");
-
-    pneumo_relay = new PneumoReley();
-    pneumo_relay->read_config("rd304");
-
-    pneumo_splitter = new PneumoSplitter();
-    pneumo_splitter->read_config("pneumo-splitter");
-    supply_reservoir = new Reservoir(0.078);
-
-
-    FileSystem &fs = FileSystem::getInstance();
-    brake_mech = loadBrakeMech(modules_dir + fs.separator() + "carbrakes-mech");
-    air_dist = loadAirDistributor(modules_dir + fs.separator() + "vr242");
-
-    air_dist->read_config("vr242");
-
-    //brake_mech->read_config("carbrakes-mech-composite");
-    brake_mech->read_custom_config(config_dir + QDir::separator() + "motor-brakes-mech");
-}
 
 void Er2T::load_brakes_config(QString path)
 {
@@ -182,6 +150,8 @@ void Er2T::load_brakes_config(QString path)
             }
         }
     }
+    else
+        printer("Тормоза неинициализированы");
 }
 
 double Er2T::trac_char(double v)
@@ -209,10 +179,19 @@ double Er2T::trac_char(double v)
 
 void Er2T::keyProcess()
 {
+
+    //if ( ( m_lastKeyTime + 1000 ) < m_timer.toMSecsSinceEpoch() )
+    //    return;
+    //printer(QString::number(m_timer.toMSecsSinceEpoch()));
+   // m_lastKeyTime = m_timer.toMSecsSinceEpoch();
+
     if (getKeyState(KEY_A))
     {
         ref_traction_level += 0.01;
     }
+
+    m_checkReverse();
+
 
     if (getKeyState(KEY_D))
     {
@@ -221,7 +200,7 @@ void Er2T::keyProcess()
 
     if (getKeyState(KEY_B))
     {
-        printer("Svistok!");
+        //printer("Svistok!");
         emit soundSetVolume("Svistok", 100);
     }
 
@@ -234,6 +213,8 @@ void Er2T::keyProcess()
             m_mk_tumbler.reset();
     }
 
+    m_checkKranPos();
+
     ref_traction_level = cut(ref_traction_level, 0.0, 1.0);
     //DebugMsg = QString("Сила тяги : %1")
     //        .arg(ref_traction_level, 4, 'f', 2);
@@ -242,30 +223,36 @@ void Er2T::keyProcess()
 void Er2T::loadConfig(QString cfg_path)
 {
     // Создаем экземпляр "читателя" XML-конфигов
-         CfgReader cfg;
+    CfgReader cfg;
 
-         // Открываем конфигурационный файл по переданному движком пути
-         if (cfg.load(cfg_path))
-         {
-             // Задаем имя секции конфига, из которой будем читать параметры
-             QString sectionName = "Vehicle";
+    // Открываем конфигурационный файл по переданному движком пути
+    if (cfg.load(cfg_path))
+    {
+        // Задаем имя секции конфига, из которой будем читать параметры
+        QString sectionName = "Vehicle";
 
-             // Читаем интересующие нас параметы в соотвествующие переменные
-             cfg.getDouble(sectionName, "F_max", F_max);
-             cfg.getDouble(sectionName, "F_min", F_min);
-             cfg.getDouble(sectionName, "V_nom", V_nom);
-         }
+        // Читаем интересующие нас параметы в соотвествующие переменные
+        cfg.getDouble(sectionName, "F_max", F_max);
+        cfg.getDouble(sectionName, "F_min", F_min);
+        cfg.getDouble(sectionName, "V_nom", V_nom);
+    }
 }
 
 void Er2T::m_initBrakeControls(QString modules_dir)
 {
     ubt = new BrakeLock();
     ubt->read_config("ubt367m");
-   // connect(ubt, &BrakeLock::soundPlay, this, &VL60::soundPlay);
+    connect(ubt, &BrakeLock::soundPlay, this, &Er2T::soundPlay);
 
     brake_crane = loadBrakeCrane(modules_dir + QDir::separator() + "krm395");
+    if (brake_crane == nullptr)
+    {
+        printer("Cannot alloc brake_crane");
+        return;
+    }
+
     brake_crane->read_config("krm395");
-   // connect(brake_crane, &BrakeCrane::soundPlay, this, &VL60::soundPlay);
+    connect(brake_crane, &BrakeCrane::soundPlay, this, &Er2T::soundPlay);
 
     loco_crane = loadLocoCrane(modules_dir + QDir::separator() + "kvt254");
     loco_crane->read_config("kvt254");
@@ -273,14 +260,36 @@ void Er2T::m_initBrakeControls(QString modules_dir)
 
 void Er2T::m_initBrakeMechanics()
 {
+    //printer("Read dir: " + config_dir);
     m_trolley_mech[TROLLEY_FWD] = new TrolleyBrakeMech(config_dir +
                                            QDir::separator() +
-                                           "fwd-trolley-brake-mech.xml");
+                                           "motor-brakes-mech.xml");
 
     m_trolley_mech[TROLLEY_BWD] = new TrolleyBrakeMech(config_dir +
                                            QDir::separator() +
-                                                       "bwd-trolley-brake-mech.xml");
+                                           "motor-brakes-mech.xml");
 }
+
+void Er2T::m_initBrakeEquipment(QString modules_dir)
+{
+    switch_valve = new SwitchingValve();
+    switch_valve->read_config("zpk");
+
+    pneumo_relay = new PneumoReley();
+    pneumo_relay->read_config("rd304");
+
+    pneumo_splitter = new PneumoSplitter();
+    pneumo_splitter->read_config("pneumo-splitter");
+    supply_reservoir = new Reservoir(0.078);
+
+    //FileSystem &fs = FileSystem::getInstance();
+    //brake_mech = loadBrakeMech(modules_dir + fs.separator() + "carbrakes-mech");
+    //brake_mech->read_config("carbrakes-mech-composite");
+    air_dist = loadAirDistributor(modules_dir +  QDir::separator() + "vr242");
+    air_dist->read_config("vr242");
+
+}
+
 
 void Er2T::m_initTriggers()
 {
@@ -339,17 +348,6 @@ void Er2T::m_stepBrakeControl(double t, double dt)
     loco_crane->step(t, dt);
 }
 
-void Er2T::m_stepMotorFans(double t, double dt)
-{
-    for (size_t i = 0; i < NUM_MOTOR_FANS; ++i)
-    {
-        MotorFan *mf = m_motor_fans[i];
-        mf->setU_power(m_phase_spliter->getU_out() *
-                       static_cast<double>(m_mv_tumblers[i].getState()));
-        mf->step(t, dt);
-    }
-}
-
 void Er2T::stepTrolleysBrakeMech(double t, double dt)
 {
     switch_valve->setInputFlow1(air_dist->getBrakeCylinderAirFlow());
@@ -369,27 +367,27 @@ void Er2T::stepTrolleysBrakeMech(double t, double dt)
     pneumo_relay->step(t, dt);
 
     // Передняя тележка наполняется через реле давления 304
-    printer( "SOME: " + QString::number(pneumo_relay->getBrakeCylAirFlow()));
 
     m_trolley_mech[TROLLEY_FWD]->setAirFlow(pneumo_relay->getBrakeCylAirFlow());
-    //m_trolley_mech[TROLLEY_FWD]->setAirFlow(0.00530924);
     m_trolley_mech[TROLLEY_FWD]->setVelocity(velocity);
     m_trolley_mech[TROLLEY_FWD]->step(t, dt);
 
     // Задняя тележка подключена через тройник от ЗПК
     m_trolley_mech[TROLLEY_BWD]->setAirFlow(pneumo_splitter->getQ_out2());
-    //m_trolley_mech[TROLLEY_BWD]->setAirFlow(0.00530924);
-    m_trolley_mech[TROLLEY_FWD]->setVelocity(velocity);
+    m_trolley_mech[TROLLEY_BWD]->setVelocity(velocity);
     m_trolley_mech[TROLLEY_BWD]->step(t, dt);
 
-    Q_r[1] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque();
-    Q_r[2] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque();
-    Q_r[3] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque();
-    Q_r[4] = m_trolley_mech[TROLLEY_BWD]->getBrakeTorque();
-    Q_r[7] = m_trolley_mech[TROLLEY_BWD]->getBrakeTorque();
-    Q_r[6] = m_trolley_mech[TROLLEY_BWD]->getBrakeTorque();
-    QString str = "Brake1: "+ QString::number(Q_r[1]) + " Brake2: "+ QString::number(Q_r[2]);
-    printer(str);
+    // передняя тележка
+    Q_r[0] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque() * 10;
+    Q_r[1] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque() * 10;
+    Q_r[2] = m_trolley_mech[TROLLEY_FWD]->getBrakeTorque() * 10;
+
+    // задняя тележка
+    Q_r[3] = m_trolley_mech[TROLLEY_BWD]->getBrakeTorque() * 10;
+    Q_r[4] = m_trolley_mech[TROLLEY_BWD]->getBrakeTorque() * 10;
+
+    //QString str = "Brake1: "+ QString::number(Q_r[1]) + " Brake2: "+ QString::number(Q_r[2]);
+    //printer(str);
 }
 
 void Er2T::stepAirDistributors(double t, double dt)
@@ -400,9 +398,6 @@ void Er2T::stepAirDistributors(double t, double dt)
     air_dist->setBrakeCylinderPressure(switch_valve->getPressure1());
     air_dist->setAirSupplyPressure(supply_reservoir->getPressure());
     air_dist->setBrakepipePressure(pTM);
-    //air_disr->setBrakeCylinderPressure(50.0);
-    //air_disr->setAirSupplyPressure(50.0);
-    //air_disr->setBrakepipePressure(50.0);
     auxRate = air_dist->getAuxRate();
     air_dist->step(t, dt);
 }
@@ -413,9 +408,55 @@ void Er2T::m_stepOtherEquipment(double t, double dt)
     horn->step(t, dt);
 }
 
+void Er2T::m_stepMotorFans(double t, double dt)
+{
+    for (size_t i = 0; i < NUM_MOTOR_FANS; ++i)
+    {
+        MotorFan *mf = m_motor_fans[i];
+        mf->setU_power(m_phase_spliter->getU_out() *
+                       static_cast<double>(m_mv_tumblers[i].getState()));
+
+        mf->step(t, dt);
+    }
+}
+
+void Er2T::m_checkKranPos()
+{
+  /*  if (getKeyState(KEY_1))
+    {
+        m_kranPos = 1;
+        brake_crane->setPosition(m_kranPos);
+    }
+    else if (getKeyState(KEY_2))
+    {
+        m_kranPos = 2;
+        brake_crane->setPosition(m_kranPos);
+    }
+    else if (getKeyState(KEY_3))
+    {
+        m_kranPos = 3;
+        brake_crane->setPosition(m_kranPos);
+    }
+    else if (getKeyState(KEY_4))
+    {
+        m_kranPos = 4;
+        brake_crane->setPosition(m_kranPos);
+    }
+    else if (getKeyState(KEY_5))
+    {
+        m_kranPos = 5;
+        brake_crane->setPosition(m_kranPos);
+    }
+    else if (getKeyState(KEY_6))
+    {
+        m_kranPos = 6;
+        brake_crane->setPosition(m_kranPos);
+    }*/
+    printer("Kran: " + brake_crane->getPositionName() + " :" + QString::number(brake_crane->getHandlePosition() ));
+}
+
 void Er2T::step(double t, double dt)
 {
-    printer("STEP!");
     // Вычисляем силу тяги, которую реализует локомотив в данный момент
     double trac_force = ref_traction_level * trac_char(velocity);
 
@@ -423,7 +464,7 @@ void Er2T::step(double t, double dt)
     double torque = trac_force * wheel_diameter / 2.0 / num_axis;
     for (size_t i = 1; i < Q_a.size(); ++i)
     {
-        Q_a[i] = ref_traction_level * torque;
+        Q_a[i] = m_reversePos * (ref_traction_level * torque);
     }
 
     m_stepPhaseSplitter(t, dt);
@@ -440,15 +481,6 @@ void Er2T::step(double t, double dt)
 
     m_stepOtherEquipment(t, dt);
 
-   /* if ((velocity * Physics::kmh) >= 10.0)
-    {
-        printer("Braking!!!!\n");
-        pTM = 1000.0;
-        m_trolley_mech[TROLLEY_FWD]->setAirFlow(100.0);
-        setBrakepipePressure(100.0);
-        m_trolley_mech[TROLLEY_FWD]->setVelocity(velocity);
-    }*/
-
     DebugMsg = QString("Гл.рез:%1 Зад. тяга:%2 Скор:%3 С.тяги:%4  Давл:%5 ТЦ1:%6 ТЦ2:%7 Колодки:%8 pTM:%9")
            .arg(main_reservoir->getPressure(), 4, 'f', 2)
             .arg(ref_traction_level, 4, 'f', 2)
@@ -461,6 +493,24 @@ void Er2T::step(double t, double dt)
             .arg(pTM, 5, 'f', 1);
             ;
     DebugMsg += "|| " + QString::number(F_max);
+}
+
+void Er2T::m_checkReverse()
+{
+    if (getKeyState(KEY_B))
+    {
+        m_reversePos = REVERSE_BACKWARD;
+    }
+
+    if (getKeyState(KEY_F))
+    {
+        m_reversePos = REVERSE_FORWARD;
+    }
+
+    if (getKeyState(KEY_N))
+    {
+        m_reversePos = REVERSE_NEUTRAL;
+    }
 }
 
 GET_VEHICLE(Er2T)

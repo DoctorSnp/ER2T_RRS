@@ -1,9 +1,12 @@
 #ifndef TEST_LOCO_H
 #define TEST_LOCO_H
 
+#include <QDateTime>
+
 #include "vehicle-api.h"
 #include "ubt367m.h"
 #include "reservoir.h"
+
 /* пневматика */
 #include "pneumo-splitter.h"
 #include "pneumatic/trolley-brake-mech.h"
@@ -32,7 +35,6 @@ class Er2T : public Vehicle
      /* инициализация*/
     void initialization() override;
     void initSupplyMachines();
-    void m_initBrakeEquipment(QString modules_dir);
     void load_brakes_config(QString path);
     void initOtherEquipment();
     // ======== устройства
@@ -48,7 +50,7 @@ class Er2T : public Vehicle
     TrainHorn   *horn = nullptr;
 
     // Тормозная рычажная передача
-    BrakeMech   *brake_mech;
+    //BrakeMech   *brake_mech;
 
     // Запасный резервуар
     Reservoir   *supply_reservoir;
@@ -100,8 +102,9 @@ class Er2T : public Vehicle
     /// Инициализация тормозной рычажной передачи
     void m_initBrakeMechanics();
 
-    void m_initTriggers();
+    void m_initBrakeEquipment(QString modules_dir);
 
+    void m_initTriggers();
 
     void m_stepPhaseSplitter(double t, double dt);
 
@@ -110,7 +113,6 @@ class Er2T : public Vehicle
     void m_stepBrakeControl(double t, double dt);
 
     void m_stepMotorFans(double t, double dt);
-
 
     void stepTrolleysBrakeMech(double t, double dt);
 
@@ -127,11 +129,24 @@ class Er2T : public Vehicle
     /// Заданный уровень тягового усилия
     double ref_traction_level = 0.0;
 
+
+    // мои функции - потом перенести
+    void m_checkKranPos();
+    void m_checkReverse();
     enum
     {
         NUM_TROLLEYS = 2,
         TROLLEY_FWD = 0,
         TROLLEY_BWD = 1
+    };
+
+    enum
+    {
+        NUM_MOTORS = 4,
+        TED1 = 0,
+        TED2 = 1,
+        TED3 = 2,
+        TED4 = 3
     };
 
     /// Тяговый трансформатор
@@ -150,6 +165,11 @@ class Er2T : public Vehicle
     Trigger fr_tumbler;
     /// Тригер тумблера управления мотор-компрессором
     Trigger m_mk_tumbler;
+    int m_reversePos = 0;
+
+    int m_kranPos = 0;
+    qint64 m_lastKeyTime = 0;
+    //QDateTime m_timer;
  };
 
 #endif // TEST_LOCO_CPP

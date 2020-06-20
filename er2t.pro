@@ -82,6 +82,10 @@ HEADERS += \
 
 DISTFILES += \
     trains/er2t.xml \
-    vehicle/er2t.xml
+    vehicle/brakes-init.xml \
+    vehicle/er2t.xml \
+    vehicle/main-switch.xml \
+    vehicle/motor-brakes-mech.xml \
+    vehicle/motor-compressor.xml
 
 
