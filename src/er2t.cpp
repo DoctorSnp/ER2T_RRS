@@ -371,14 +371,14 @@ void Er2T::stepTrolleysBrakeMech(double t, double dt)
     // Передняя тележка наполняется через реле давления 304
     printer( "SOME: " + QString::number(pneumo_relay->getBrakeCylAirFlow()));
 
-    //m_trolley_mech[TROLLEY_FWD]->setAirFlow(pneumo_relay->getBrakeCylAirFlow());
-    m_trolley_mech[TROLLEY_FWD]->setAirFlow(0.00530924);
+    m_trolley_mech[TROLLEY_FWD]->setAirFlow(pneumo_relay->getBrakeCylAirFlow());
+    //m_trolley_mech[TROLLEY_FWD]->setAirFlow(0.00530924);
     m_trolley_mech[TROLLEY_FWD]->setVelocity(velocity);
     m_trolley_mech[TROLLEY_FWD]->step(t, dt);
 
     // Задняя тележка подключена через тройник от ЗПК
-   // m_trolley_mech[TROLLEY_BWD]->setAirFlow(pneumo_splitter->getQ_out2());
-     m_trolley_mech[TROLLEY_BWD]->setAirFlow(0.00530924);
+    m_trolley_mech[TROLLEY_BWD]->setAirFlow(pneumo_splitter->getQ_out2());
+    //m_trolley_mech[TROLLEY_BWD]->setAirFlow(0.00530924);
     m_trolley_mech[TROLLEY_FWD]->setVelocity(velocity);
     m_trolley_mech[TROLLEY_BWD]->step(t, dt);
 
@@ -395,7 +395,6 @@ void Er2T::stepTrolleysBrakeMech(double t, double dt)
 void Er2T::stepAirDistributors(double t, double dt)
 {
     supply_reservoir->setAirFlow(air_dist->getAirSupplyFlow());
-    //supply_reservoir->setAirFlow(50.0);
     supply_reservoir->step(t, dt);
 
     air_dist->setBrakeCylinderPressure(switch_valve->getPressure1());

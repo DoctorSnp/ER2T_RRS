@@ -20,9 +20,6 @@
 #include    "reservoir.h" // Модель резервуара
 #include    "airdistributor.h" // Базовый класс "воздухораспределитель"
 
-
-class SL2M;
-
 class Er2T : public Vehicle
 {
  public:
@@ -38,8 +35,7 @@ class Er2T : public Vehicle
     void m_initBrakeEquipment(QString modules_dir);
     void load_brakes_config(QString path);
     void initOtherEquipment();
-     // ======== устройства
-     /// Локомотивный скоростемер
+    // ======== устройства
     /// Переключательный клапан ЗПК
     SwitchingValve  *switch_valve;
 
